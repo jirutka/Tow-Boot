@@ -9,16 +9,68 @@ jobs:
     strategy:
       matrix:
         device:
-          - uBoot-sandbox
+          #- libreComputer-amlS805xAc
+          #- libreComputer-rocRk3399Pc
+          #- libreComputer-rocRk3399PcMezzanine
+          #- odroid-C2
+          #- odroid-C4
+          #- odroid-N2
+          #- olimex-teresI
+          #- orangePi-pc
+          #- orangePi-zeroPlus2H5
+          #- pine64-pineA64
+          #- pine64-pineA64LTS
+          #- pine64-pinebookA64
+          #- pine64-pinebookPro
+          #- pine64-pinephoneA64
+          #- pine64-pinephonePro
+          #- pine64-rockpro64
           #- radxa-RockPi4
+          #- radxa-RockPi4C
+          #- radxa-zero2
+          #- raspberryPi-aarch64
+          - uBoot-sandbox
     steps:
       - uses: actions/checkout@v3
 
-      - uses: cachix/install-nix-action@v17
+      - name: Cache nix store
+        uses: actions/cache@v3
+        with:
+          # NOTE: '**/*.nix' doesn't work, dunno why.
+          key: nix-${{ hashFiles('nixpkgs.nix') }}
+          restore-keys: nix-
+          path: .cache/nix
 
-      - run: nix-build -v release.nix
+      - name: Restore cached nix store
+        run: |
+          # actions/cache runs as an unprivileged user, so it's unable to write
+          # to /. Thus we move the cached paths to .cache/nix before saving the
+          # cache to be able to restore it.
+          if [ -e .cache/nix ]; then
+            sudo rm -rf /nix/store /nix/var/nix/db/db.sqlite
+            sudo mkdir -p /nix/var/nix/db
+            sudo mv .cache/nix/store /nix/
+            sudo mv .cache/nix/db.sqlite /nix/var/nix/db/
+            sudo chmod 1775 /nix/store
+            sudo chmod 0644 /nix/var/nix/db/db.sqlite
+            sudo chown -R root:root /nix/store /nix/var/nix/db/db.sqlite
+          fi
 
-      - run: |
-          ls -la
-          ls -la result/
-          du -h result/
+      - name: Install nix
+        uses: cachix/install-nix-action@v17
+        with:
+          extra_nix_config: |
+            # Save space on disk and in cache.
+            auto-optimise-store = true
+            # Keep all store paths necessary to build the outputs.
+            keep-outputs = true
+            keep-derivations = true
+
+      - name: Build Tow-Boot for device ${{ matrix.device }}
+        run: nix-build -A ${{ matrix.device }}
+
+      - name: Prepare nix store for caching
+        run: |
+          sudo systemctl stop nix-daemon
+          sudo mkdir -p .cache/nix
+          sudo mv /nix/store /nix/var/nix/db/db.sqlite .cache/nix/
