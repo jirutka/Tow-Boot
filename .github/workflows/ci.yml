@@ -25,7 +25,7 @@ jobs:
           #- pine64-pinephoneA64
           #- pine64-pinephonePro
           #- pine64-rockpro64
-          #- radxa-RockPi4
+          - radxa-RockPi4
           #- radxa-RockPi4C
           #- radxa-zero2
           #- raspberryPi-aarch64
