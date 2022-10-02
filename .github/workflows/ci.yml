@@ -1,0 +1,24 @@
+name: CI
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device:
+          - uBoot-sandbox
+          #- radxa-RockPi4
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: cachix/install-nix-action@v17
+
+      - run: nix-build -v release.nix
+
+      - run: |
+          ls -la
+          ls -la result/
+          du -h result/
