@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v3
         with:
           # NOTE: '**/*.nix' doesn't work, dunno why.
-          key: nix-${{ hashFiles('nixpkgs.nix') }}
+          key: nix-${{ github.sha }}
           restore-keys: nix-
           path: .cache/nix
 
@@ -67,7 +67,17 @@ jobs:
             keep-derivations = true
 
       - name: Build Tow-Boot for device ${{ matrix.device }}
-        run: nix-build -A ${{ matrix.device }}
+        run: |
+          nix-build -A ${{ matrix.device }}
+          ls -la /nix/store/*Tow-Boot.radxa-RockPi4* || true
+
+      - name: Upload to Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            result/*.img
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare nix store for caching
         run: |
