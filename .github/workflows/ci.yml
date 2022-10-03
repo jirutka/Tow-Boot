@@ -5,6 +5,7 @@ on:
 
 jobs:
   build:
+    name: Build for ${{ matrix.device }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,20 +25,19 @@ jobs:
           #- pine64-pinebookPro
           #- pine64-pinephoneA64
           #- pine64-pinephonePro
-          #- pine64-rockpro64
+          - pine64-rockpro64
           - radxa-RockPi4
           #- radxa-RockPi4C
           #- radxa-zero2
           #- raspberryPi-aarch64
-          - uBoot-sandbox
     steps:
       - uses: actions/checkout@v3
 
       - name: Cache nix store
         uses: actions/cache@v3
         with:
-          # NOTE: '**/*.nix' doesn't work, dunno why.
-          key: nix-${{ github.sha }}
+          key: nix-${{ matrix.device }}
+          # Allow to use cache created for a different device as a fallback.
           restore-keys: nix-
           path: .cache/nix
 
@@ -66,21 +66,51 @@ jobs:
             keep-outputs = true
             keep-derivations = true
 
-      - name: Build Tow-Boot for device ${{ matrix.device }}
-        run: |
-          nix-build -A ${{ matrix.device }}
-          ls -la /nix/store/*Tow-Boot.radxa-RockPi4* || true
+      - name: Build for device ${{ matrix.device }}
+        run: nix-build -A ${{ matrix.device }}.build.archive
 
-      - name: Upload to Releases
-        uses: softprops/action-gh-release@v1
+      - name: Rename tarball
+        run: |
+          tarball=$(readlink -f result)
+          cp -L "$tarball" "${tarball#*-}"
+
+      - name: Upload tarball to Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          files: |
-            result/*.img
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ matrix.device }}
+          path: '*.tar.xz'
+          if-no-files-found: error
 
       - name: Prepare nix store for caching
         run: |
           sudo systemctl stop nix-daemon
           sudo mkdir -p .cache/nix
           sudo mv /nix/store /nix/var/nix/db/db.sqlite .cache/nix/
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download tarballs from Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts/
+
+      - name: Move tarballs to a single directory
+        run: |
+          mkdir tarballs
+          mv artifacts/*/*.tar.xz tarballs/
+
+      - name: Generate checksums.txt
+        run:
+          shasum -a 256 * > checksums.txt
+        working-directory: tarballs
+
+      - name: Upload tarballs to the Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tarballs/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
