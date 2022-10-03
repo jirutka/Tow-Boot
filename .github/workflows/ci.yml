@@ -37,26 +37,26 @@ jobs:
     strategy:
       matrix:
         device:
-          - libreComputer-amlS805xAc
-          - libreComputer-rocRk3399Pc
-          - libreComputer-rocRk3399PcMezzanine
-          - odroid-C2
-          - odroid-C4
-          - odroid-N2
-          - olimex-teresI
-          - orangePi-pc
-          - orangePi-zeroPlus2H5
+          #- libreComputer-amlS805xAc
+          #- libreComputer-rocRk3399Pc
+          #- libreComputer-rocRk3399PcMezzanine
+          #- odroid-C2
+          #- odroid-C4
+          #- odroid-N2
+          #- olimex-teresI
+          #- orangePi-pc
+          #- orangePi-zeroPlus2H5
           - pine64-pineA64
           - pine64-pineA64LTS
-          - pine64-pinebookA64
-          - pine64-pinebookPro
-          - pine64-pinephoneA64
-          - pine64-pinephonePro
-          - pine64-rockpro64
-          - radxa-RockPi4
-          - radxa-RockPi4C
-          - radxa-zero2
-          - raspberryPi-aarch64
+          #- pine64-pinebookA64
+          #- pine64-pinebookPro
+          #- pine64-pinephoneA64
+          #- pine64-pinephonePro
+          #- pine64-rockpro64
+          #- radxa-RockPi4
+          #- radxa-RockPi4C
+          #- radxa-zero2
+          #- raspberryPi-aarch64
     steps:
       - uses: actions/checkout@v3
 
