@@ -4,8 +4,35 @@ on:
   - pull_request
 
 jobs:
+  prepare-cache:
+    name: Prepare nix cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache nix store
+        uses: ./.github/actions/cache-nix
+        with:
+          key: nix-${{ github.sha }}
+          restore-keys: nix-
+
+      - name: Install nix
+        uses: cachix/install-nix-action@v17
+        with:
+          extra_nix_config: |
+            # Save space on disk and in cache.
+            auto-optimise-store = true
+            # Keep all store paths necessary to build the outputs.
+            keep-outputs = true
+            keep-derivations = true
+
+      # TODO: This should ideally just fetch and build dependencies.
+      - name: Build
+        run: echo ok  # nix-build --no-out-link -A raspberryPi-aarch64
+
   build:
     name: Build for ${{ matrix.device }}
+    needs: prepare-cache
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -34,43 +61,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Cache nix store
-        uses: actions/cache@v3
+        uses: ./.github/actions/cache-nix
         with:
           key: nix-${{ github.sha }}
           restore-keys: nix-
-          path: .cache/nix
-
-      - name: Restore cached nix store
-        run: |
-          # actions/cache runs as an unprivileged user, so it's unable to write
-          # to /. Thus we move the cached paths to .cache/nix before saving the
-          # cache to be able to restore it.
-          if [ -e .cache/nix ]; then
-            rm -rf /nix/store /nix/var/nix/db/db.sqlite
-            mkdir -p /nix/var/nix/db
-            mv .cache/nix/store /nix/
-            mv .cache/nix/db.sqlite /nix/var/nix/db/
-            chmod 1775 /nix/store
-            chmod 0644 /nix/var/nix/db/db.sqlite
-            chown -R root:root /nix/store /nix/var/nix/db/db.sqlite
-          fi
-        shell: sudo sh {0}
 
       - name: Install nix
         uses: cachix/install-nix-action@v17
-        with:
-          extra_nix_config: |
-            # Save space on disk and in cache.
-            auto-optimise-store = true
-            # Keep all store paths necessary to build the outputs.
-            keep-outputs = true
-            keep-derivations = true
 
-      - name: Build images
-        id: images
-        run: |
-          nix-build -A ${{ matrix.device }}
-          echo "::set-output name=result::$(readlink -f result)"
+      - name: Build images for ${{ matrix.device }}
+        run: nix-build -A ${{ matrix.device }}
 
       # XXX: Artifacts are built for each push and pull request, so better to
       # keep them small, otherwise we would run out of space on GitHub quickly.
@@ -80,9 +80,7 @@ jobs:
 
       - name: Build archive
         id: archive
-        run: |
-          nix-build -A ${{ matrix.device }}.build.archive
-          echo "::set-output name=result::$(readlink -f result)"
+        run: nix-build -A ${{ matrix.device }}.build.archive
 
       - name: Rename archive
         run: |
@@ -95,18 +93,6 @@ jobs:
           path: '*.tar.xz'
           if-no-files-found: error
 
-      - name: Prepare nix store for caching
-        run: |
-          rm -f result
-          # We have manually removed some files from the images result, so it
-          # should not be cached. Moreover, we share the cache between jobs, so
-          # it wouldn't make much sense to keep them.
-          nix-store --delete ${{ steps.images.outputs.result }} ${{ steps.archive.outputs.result }}
-          systemctl stop nix-daemon
-          mkdir -p .cache/nix
-          mv /nix/store /nix/var/nix/db/db.sqlite .cache/nix/
-        shell: sudo sh {0}
-
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
@@ -115,16 +101,14 @@ jobs:
     steps:
       - name: Download archives from Artifacts
         uses: actions/download-artifact@v3
-        with:
-          path: archives/
 
       - name: Generate checksums.txt
         run: shasum -a 256 * > checksums.txt
-        working-directory: archives
+        working-directory: archive
 
       - name: Upload archives to Releases
         uses: softprops/action-gh-release@v1
         with:
-          files: archives/*
+          files: archive/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
