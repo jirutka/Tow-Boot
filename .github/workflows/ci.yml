@@ -36,8 +36,7 @@ jobs:
       - name: Cache nix store
         uses: actions/cache@v3
         with:
-          key: nix-${{ matrix.device }}
-          # Allow to use cache created for a different device as a fallback.
+          key: nix-${{ github.sha }}
           restore-keys: nix-
           path: .cache/nix
 
@@ -47,14 +46,15 @@ jobs:
           # to /. Thus we move the cached paths to .cache/nix before saving the
           # cache to be able to restore it.
           if [ -e .cache/nix ]; then
-            sudo rm -rf /nix/store /nix/var/nix/db/db.sqlite
-            sudo mkdir -p /nix/var/nix/db
-            sudo mv .cache/nix/store /nix/
-            sudo mv .cache/nix/db.sqlite /nix/var/nix/db/
-            sudo chmod 1775 /nix/store
-            sudo chmod 0644 /nix/var/nix/db/db.sqlite
-            sudo chown -R root:root /nix/store /nix/var/nix/db/db.sqlite
+            rm -rf /nix/store /nix/var/nix/db/db.sqlite
+            mkdir -p /nix/var/nix/db
+            mv .cache/nix/store /nix/
+            mv .cache/nix/db.sqlite /nix/var/nix/db/
+            chmod 1775 /nix/store
+            chmod 0644 /nix/var/nix/db/db.sqlite
+            chown -R root:root /nix/store /nix/var/nix/db/db.sqlite
           fi
+        shell: sudo sh {0}
 
       - name: Install nix
         uses: cachix/install-nix-action@v17
@@ -66,7 +66,16 @@ jobs:
             keep-outputs = true
             keep-derivations = true
 
-      - name: Build for device ${{ matrix.device }}
+      - name: Build images
+        run: nix-build -A ${{ matrix.device }}
+
+      # Artifacts are built for each push and pull request, so better to keep
+      # them small, otherwise we would run out of space on GitHub quickly.
+      - name: Remove unnecessary files
+        if: "!startsWith(github.ref, 'refs/tags/v')"  # if not release
+        run: sudo rm -rf result/{binaries,config,source}
+
+      - name: Build tarball
         run: nix-build -A ${{ matrix.device }}.build.archive
 
       - name: Rename tarball
@@ -77,15 +86,15 @@ jobs:
       - name: Upload tarball to Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.device }}
           path: '*.tar.xz'
           if-no-files-found: error
 
       - name: Prepare nix store for caching
         run: |
-          sudo systemctl stop nix-daemon
-          sudo mkdir -p .cache/nix
-          sudo mv /nix/store /nix/var/nix/db/db.sqlite .cache/nix/
+          systemctl stop nix-daemon
+          mkdir -p .cache/nix
+          mv /nix/store /nix/var/nix/db/db.sqlite .cache/nix/
+        shell: sudo sh {0}
 
   release:
     name: Release
@@ -96,16 +105,10 @@ jobs:
       - name: Download tarballs from Artifacts
         uses: actions/download-artifact@v3
         with:
-          path: artifacts/
-
-      - name: Move tarballs to a single directory
-        run: |
-          mkdir tarballs
-          mv artifacts/*/*.tar.xz tarballs/
+          path: tarballs/
 
       - name: Generate checksums.txt
-        run:
-          shasum -a 256 * > checksums.txt
+        run: shasum -a 256 * > checksums.txt
         working-directory: tarballs
 
       - name: Upload tarballs to the Release
