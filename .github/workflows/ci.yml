@@ -35,6 +35,7 @@ jobs:
     needs: prepare-cache
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         device:
           - libreComputer-amlS805xAc
